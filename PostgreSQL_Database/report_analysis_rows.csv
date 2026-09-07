@@ -1,0 +1,45 @@
+id,report_id,issues,risk_level,time_context
+0,22,"[""poor lighting""]",high,night
+1,2,"[""other""]",medium,evening
+2,3,"[""no transport access"",""other""]",medium,unspecified
+3,4,"[""other""]",medium,evening
+4,5,"[""no transport access"",""other""]",medium,unspecified
+5,6,"[""harassment reported"",""low activity"",""isolated area"",""no transport access""]",high,day
+6,7,"[""construction/obstruction""]",medium,evening
+7,8,"[""no transport access"",""other""]",medium,unspecified
+8,9,"[""low activity"",""isolated area"",""no transport access"",""harassment reported""]",high,day
+9,10,"[""no transport access"",""unsafe crossing""]",medium,day
+10,11,"[""other""]",medium,night
+11,12,"[""poor lighting"",""construction/obstruction"",""harassment reported""]",medium,day
+12,13,[],medium,night
+13,15,"[""construction/obstruction""]",medium,evening
+14,16,"[""no transport access"",""other""]",medium,unspecified
+15,17,"[""low activity"",""isolated area"",""no transport access"",""harassment reported""]",high,day
+16,18,"[""no transport access"",""unsafe crossing""]",medium,day
+17,19,"[""other""]",medium,night
+18,20,"[""construction/obstruction"",""other""]",medium,day
+19,21,[],medium,night
+20,,"[""poor lighting""]",high,night
+21,22,"[""poor lighting""]",high,night
+22,23,"[""poor lighting""]",high,night
+23,24,"[""other""]",high,night
+24,25,"[""construction/obstruction"",""other""]",medium,evening
+25,26,[],low,day
+26,27,"[""no transport access"",""harassment reported""]",medium,night
+27,28,"[""poor lighting""]",high,night
+28,29,"[""poor lighting""]",high,night
+29,30,"[""poor lighting"",""isolated area""]",high,night
+30,31,"[""poor lighting"",""isolated area""]",high,night
+31,32,"[""other""]",high,day
+32,33,"[""poor lighting""]",high,night
+33,34,"[""no transport access"",""harassment reported""]",high,day
+34,35,"[""poor lighting"",""isolated area""]",high,night
+35,36,[],low,unspecified
+36,37,[],low,unspecified
+37,38,[],low,unspecified
+41,39,"[""poor lighting"",""isolated area""]",high,night
+42,40,"[""harassment reported""]",high,night
+43,41,[],low,day
+44,42,"[""poor lighting"",""isolated area"",""harassment reported""]",high,night
+45,42,"[""poor lighting"",""isolated area"",""harassment reported""]",high,night
+46,42,"[""poor lighting"",""isolated area"",""harassment reported""]",high,night
