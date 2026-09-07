@@ -704,6 +704,21 @@ The system provides a data-informed safety assessment based on available reports
 
 ---
 
+
+## Team & Roles
+
+AI SafeRoute was developed collaboratively by **Insharah Irshad** and **Aqsa**.
+
+| Team Member         | Role                    | Responsibilities                                                                                                                                                                                                                            |
+| ------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Insharah Irshad** | Backend & AI/Automation | Designed and implemented the n8n automation workflows, PostgreSQL/Supabase database integration, route-safety scoring logic, AI recommendation pipeline, API integration, safety-first route selection logic, and backend workflow testing. |
+| **Aqsa**            | Frontend Developer      | Designed and developed the React/Vite frontend, including the route comparison interface, safety result cards, safety map, report submission interface, navigation, and overall user experience.                                            |
+
+### Collaboration
+
+The frontend and backend were integrated through API endpoints, allowing the React application to communicate with the n8n automation layer and PostgreSQL/Supabase database for real-time route comparison and safety analysis.
+
+
 # Future Improvements
 
 Potential future improvements include:
