@@ -480,6 +480,34 @@ AI-SafeRoute/
 | Version Control        | Git & GitHub                         |
 
 ---
+## Database
+
+AI SafeRoute uses **PostgreSQL** as its relational database, hosted and managed through **Supabase**.
+
+The database stores community-submitted safety experiences and their AI-generated risk analysis.
+
+### Database Structure
+
+The main tables are:
+
+* **`reports`** — Stores submitted safety experiences, including location, safety rating, travel context, transport method, and description.
+* **`report_analysis`** — Stores the analyzed risk level, reported safety issues, and time context associated with each report.
+
+The `report_analysis` table is linked to `reports` through the report ID, allowing the application to combine community experiences with AI-based safety analysis.
+
+### Database Exports
+
+For reproducibility and project demonstration, database exports are included in the repository:
+
+```text
+Database/
+├── reports_rows.csv
+└── report_analysis_rows.csv
+```
+
+These files represent the database records used by the application during development and demonstration.
+
+> **Note:** The live Supabase database credentials and connection secrets are not included in this repository.
 
 # Running the Project
 
