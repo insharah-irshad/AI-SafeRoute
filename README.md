@@ -292,6 +292,21 @@ The application is designed to communicate the result as a relative safety asses
 
 ---
 
+## Safety Risk Levels
+
+AI SafeRoute presents route risk using three simple levels:
+
+| Risk Level   | Indicator | Meaning                                                                |
+| ------------ | --------- | ---------------------------------------------------------------------- |
+| **Safe**     | 🟢 Green  | Available safety data indicates relatively lower risk                  |
+| **Moderate** | 🟡 Yellow | Some safety concerns have been reported in or around the route         |
+| **Risky**    | 🔴 Red    | Available reports indicate a relatively higher level of safety concern |
+
+The risk level is based on the available community safety reports and route-specific analysis.
+
+> **Note:** A "Safe" rating does not guarantee that a route is completely safe. It represents a lower relative risk based on the available data.
+
+
 # Safety-First Recommendation Logic
 
 The recommendation system follows a strict priority order:
