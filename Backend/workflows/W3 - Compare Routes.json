@@ -1,0 +1,347 @@
+{
+  "name": "W3 - Compare Routes",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "compare",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a9e034d5-3a28-45f6-9f7c-73f0d7e83983",
+      "name": "Receive Route Request",
+      "webhookId": "feb07a90-b38f-4e39-b030-efe9b73d5b25"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"coordinates\": [ [{{ $json.origin_lng }}, {{ $json.origin_lat }}], [{{ $json.destination_lng }}, {{ $json.destination_lat }}] ], \"alternative_routes\": { \"target_count\": 2, \"weight_factor\": 1.4 } }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "1fdc3b07-a8ba-4daf-955d-f0eb7545aae8",
+      "name": "Call Routing API",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YCzdactdM3VISILs",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.data;\nconst response = typeof raw === \"string\" ? JSON.parse(raw) : raw;\nconst features = response.features || [];\n\nconst routes = features.map((feature, index) => {\n  const durationSec = feature.properties.segments[0].duration;\n  const distanceM = feature.properties.segments[0].distance;\n  const coordinates = feature.geometry.coordinates; // [[lng, lat], [lng, lat], ...]\n\n  return {\n    label: `Route ${index + 1}`,\n    duration_min: Math.round(durationSec / 60),\n    distance_km: Math.round(distanceM / 100) / 10,\n    path: coordinates.map(c => ({ lat: c[1], lng: c[0] }))\n  };\n});\n\nreturn { json: { routes } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        0
+      ],
+      "id": "def82655-5a34-4277-82f5-116da5221aea",
+      "name": "Parse Routes"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  r.id,\n  r.location_text,\n  r.latitude,\n  r.longitude,\n  r.safety_rating,\n  ra.risk_level\nFROM reports r\nLEFT JOIN report_analysis ra\n  ON ra.report_id = r.id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        800,
+        0
+      ],
+      "id": "d0a7045f-62a9-4ee7-a771-5076a7b11ee5",
+      "name": "Get City Safety Stats",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "jrQH96ASGDvPMa1p",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// AI SAFEROUTE — ROUTE-SPECIFIC SAFETY SCORING\n// ============================================================\n\nconst MATCH_THRESHOLD_METERS = 2000;\n\n// ------------------------------------------------------------\n// Karachi area fallback coordinates for reports whose DB\n// latitude/longitude are missing.\n// ------------------------------------------------------------\n\nconst knownAreas = [\n  { keywords: [\"orangi\"], lat: 24.9556, lng: 66.9878 },\n  { keywords: [\"north nazimabad\"], lat: 24.9700, lng: 67.0500 },\n  { keywords: [\"nazimabad\", \"board office\", \"lasbela\", \"numaish\", \"tariq road\", \"sadar\", \"saddar\"], lat: 24.9019, lng: 67.0378 },\n  { keywords: [\"gulshan\", \"nagan\", \"hamdard\", \"millennium mall\", \"national stadium\"], lat: 24.9297, lng: 67.0862 },\n  { keywords: [\"hub dam\", \"hub\"], lat: 25.2450, lng: 67.0500 },\n  { keywords: [\"malir\", \"maymar\", \"maymaar\"], lat: 24.8969, lng: 67.2073 },\n  { keywords: [\"lalzar\"], lat: 24.8800, lng: 67.1500 },\n  { keywords: [\"north karachi\"], lat: 24.9700, lng: 67.0500 },\n  { keywords: [\"saima villas\"], lat: 24.9350, lng: 67.1150 },\n  { keywords: [\"shahre faisal\", \"defence\", \"phase 6\", \"dha\"], lat: 24.8138, lng: 67.0611 },\n  { keywords: [\"site\", \"super highway\"], lat: 24.9100, lng: 67.0700 },\n  { keywords: [\"university road\"], lat: 24.9370, lng: 67.1130 },\n  { keywords: [\"up more\"], lat: 24.9420, lng: 67.1180 },\n  { keywords: [\"clifton\"], lat: 24.8138, lng: 67.0300 },\n  { keywords: [\"highway\"], lat: 24.9200, lng: 67.0700 },\n  { keywords: [\"karachi\"], lat: 24.8607, lng: 67.0011 }\n];\n\nfunction getCoordsFromText(text) {\n  const lower = String(text || \"\").toLowerCase();\n\n  for (const area of knownAreas) {\n    if (area.keywords.some(k => lower.includes(k))) {\n      return {\n        lat: area.lat,\n        lng: area.lng\n      };\n    }\n  }\n\n  return null;\n}\n\n// ------------------------------------------------------------\n// Haversine distance\n// ------------------------------------------------------------\n\nfunction haversineMeters(lat1, lng1, lat2, lng2) {\n  const R = 6371000;\n\n  const toRad = d => d * Math.PI / 180;\n\n  const dLat = toRad(lat2 - lat1);\n  const dLng = toRad(lng2 - lng1);\n\n  const a =\n    Math.sin(dLat / 2) ** 2 +\n    Math.cos(toRad(lat1)) *\n    Math.cos(toRad(lat2)) *\n    Math.sin(dLng / 2) ** 2;\n\n  return R * 2 * Math.atan2(\n    Math.sqrt(a),\n    Math.sqrt(1 - a)\n  );\n}\n\n// ------------------------------------------------------------\n// Find minimum distance from report to route\n// ------------------------------------------------------------\n\nfunction minDistanceToPath(reportLat, reportLng, path) {\n  let min = Infinity;\n\n  for (const point of path) {\n    const d = haversineMeters(\n      reportLat,\n      reportLng,\n      point.lat,\n      point.lng\n    );\n\n    if (d < min) {\n      min = d;\n    }\n  }\n\n  return min;\n}\n\n// ------------------------------------------------------------\n// Get all reports from Postgres\n// ------------------------------------------------------------\n\nconst allReports = $input.all()\n  .map(item => {\n\n    const dbLat = parseFloat(item.json.latitude);\n    const dbLng = parseFloat(item.json.longitude);\n\n    // Prefer real coordinates from database\n    if (\n      Number.isFinite(dbLat) &&\n      Number.isFinite(dbLng)\n    ) {\n      return {\n        ...item.json,\n        latitude: dbLat,\n        longitude: dbLng\n      };\n    }\n\n    // Otherwise approximate from location text\n    const coords = getCoordsFromText(\n      item.json.location_text\n    );\n\n    if (!coords) return null;\n\n    return {\n      ...item.json,\n      latitude: coords.lat,\n      longitude: coords.lng\n    };\n  })\n  .filter(Boolean);\n\n// ------------------------------------------------------------\n// Score reports\n// ------------------------------------------------------------\n\nfunction computeScore(reports) {\n\n  if (!reports.length) {\n    return {\n      score: 60,\n      riskLevel: \"medium\",\n      count: 0\n    };\n  }\n\n  let weightedRating = 0;\n  let totalWeight = 0;\n\n  const riskWeights = {\n    high: 0,\n    medium: 0,\n    low: 0\n  };\n\n  for (const report of reports) {\n\n    const rating =\n      Number.isFinite(parseFloat(report.safety_rating))\n        ? parseFloat(report.safety_rating)\n        : 3;\n\n    const risk =\n      String(report.risk_level || \"medium\").toLowerCase();\n\n    // Reports closer to the route have more influence.\n    const distance = report._distance_meters || 0;\n\n    let weight = 1;\n\n    if (distance <= 300) {\n      weight = 3;\n    } else if (distance <= 700) {\n      weight = 2;\n    } else {\n      weight = 1;\n    }\n\n    weightedRating += rating * weight;\n    totalWeight += weight;\n\n    if (risk === \"high\") {\n      riskWeights.high += weight;\n    } else if (risk === \"low\") {\n      riskWeights.low += weight;\n    } else {\n      riskWeights.medium += weight;\n    }\n  }\n\n  const avgRating =\n    totalWeight > 0\n      ? weightedRating / totalWeight\n      : 3;\n\n  let score = Math.round(\n    (avgRating / 5) * 100\n  );\n\n  // Determine dominant risk\n  const dominantRisk =\n    Object.entries(riskWeights)\n      .sort((a, b) => b[1] - a[1])[0][0];\n\n  if (dominantRisk === \"high\") {\n    score -= 15;\n  }\n\n  if (dominantRisk === \"low\") {\n    score += 10;\n  }\n\n  score = Math.max(\n    0,\n    Math.min(100, score)\n  );\n\n  return {\n    score,\n    riskLevel: dominantRisk,\n    count: reports.length\n  };\n}\n\n// ------------------------------------------------------------\n// Get routes from Parse Routes\n// ------------------------------------------------------------\n\nconst routesData =\n  $('Parse Routes').first().json.routes || [];\n\nif (!routesData.length) {\n  return {\n    json: {\n      routes: [],\n      recommended_route: null,\n      explanation:\n        \"Couldn't find a route between those two points.\"\n    }\n  };\n}\n\n// ------------------------------------------------------------\n// Score every route independently\n// ------------------------------------------------------------\n\nconst routesWithScore = routesData.map(route => {\n\n  const nearbyReports = [];\n\n  for (const report of allReports) {\n\n    const distance = minDistanceToPath(\n      report.latitude,\n      report.longitude,\n      route.path\n    );\n\n    if (distance <= MATCH_THRESHOLD_METERS) {\n\n      nearbyReports.push({\n        ...report,\n        _distance_meters: Math.round(distance)\n      });\n\n    }\n  }\n\n  // Sort closest reports first\n  nearbyReports.sort(\n    (a, b) =>\n      a._distance_meters -\n      b._distance_meters\n  );\n\n  // Use matched reports only.\n  // If absolutely nothing is nearby, use a neutral score\n  // instead of giving both routes the same city-wide score.\n  let stats;\n\n  if (nearbyReports.length > 0) {\n\n    stats = computeScore(\n      nearbyReports\n    );\n\n  } else {\n\n    stats = {\n      score: 60,\n      riskLevel: \"medium\",\n      count: 0\n    };\n  }\n\n  return {\n\n    ...route,\n\n    safety_score: stats.score,\n\n    risk_level: stats.riskLevel,\n\n    based_on_reports: stats.count,\n\n    used_city_fallback:\n      nearbyReports.length === 0,\n\n    matched_reports:\n      nearbyReports.slice(0, 10).map(r => ({\n        id: r.id,\n        location: r.location_text,\n        safety_rating: r.safety_rating,\n        risk_level: r.risk_level,\n        distance_meters: r._distance_meters\n      }))\n  };\n});\n\n// ------------------------------------------------------------\n// Return route comparison\n// ------------------------------------------------------------\n\nreturn {\n  json: {\n    routes: routesWithScore\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        0
+      ],
+      "id": "765ed2c5-fef0-428a-bcfd-5d9d8dcc493d",
+      "name": "Merge Score With Routes"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1904,
+        0
+      ],
+      "id": "15ff69e6-3224-4cb4-b2bb-60a7415d7208",
+      "name": "Send Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst routes = $('Merge Score With Routes').first().json.routes;\n\n// Rule-based fallback already computed upstream — works even without Gemini\nconst fallback = $('Code in JavaScript').first().json;\n\nif (!routes || routes.length === 0) {\n  return {\n    json: {\n      routes: [],\n      recommended_route: null,\n      explanation: fallback?.explanation || \"Couldn't find a route between those two points.\",\n    },\n  };\n}\n\n// Detect a failed/errored Gemini call (quota hit, timeout, etc.) —\n// \"Continue on Fail\" attaches an \"error\" field, and a successful\n// call always has response.candidates.\nconst geminiFailed = !!response.error || !response.candidates;\n\nlet recommended_route, explanation;\n\nif (!geminiFailed) {\n  const rawText = response.candidates?.[0]?.content?.parts?.[0]?.text || \"{}\";\n  try {\n    const parsed = JSON.parse(rawText);\n    if (parsed.recommended_route && parsed.explanation) {\n      recommended_route = parsed.recommended_route;\n      explanation = parsed.explanation;\n    }\n  } catch (e) {\n    // fall through to rule-based fallback below\n  }\n}\n\nif (!recommended_route) {\n  // Gemini failed, errored, or gave unusable output — use the\n  // rule-based (highest safety score) recommendation instead.\n  recommended_route = fallback.recommended_route;\n  explanation = fallback.explanation;\n}\n\nreturn {\n  json: {\n    routes,\n    recommended_route,\n    explanation,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        176
+      ],
+      "id": "f435b885-196a-4924-a73e-62b26dfe4189",
+      "name": "Parse AI Recommendation"
+    },
+    {
+      "parameters": {
+        "jsCode": "const routes = $input.first().json.routes || [];\n\n// The deterministic Code node has already selected the safest route.\n// Gemini is only responsible for producing a clear, detailed explanation.\n\nconst safest = [...routes].sort((a, b) => {\n  const scoreDiff = (b.safety_score ?? 0) - (a.safety_score ?? 0);\n\n  if (scoreDiff !== 0) {\n    return scoreDiff;\n  }\n\n  return (a.duration_min ?? Infinity) - (b.duration_min ?? Infinity);\n})[0];\n\nconst otherRoutes = routes.filter(\n  route => route.label !== safest?.label\n);\n\nconst promptText = `\nYou are an AI route-safety assistant for a women's safety navigation app in Pakistan.\n\nYour task is to explain why the safest route was selected using the route safety data provided below.\n\nIMPORTANT SAFETY RULES:\n- Safety is ALWAYS the primary criterion.\n- The route with the highest safety score is the recommended route.\n- NEVER recommend a faster route over a safer route.\n- Travel time must NEVER override a higher safety score.\n- If two routes have exactly the same safety score, the shorter route may be selected as the tie-breaker.\n- Do not invent safety reports, locations, scores, or issues.\n- Only mention safety concerns that are present in the provided data.\n- Use simple, natural language that a normal user can understand.\n\nEXPLANATION REQUIREMENTS:\n- Clearly state why the recommended route was selected.\n- Mention its safety score.\n- Mention how many nearby safety reports contributed to the assessment.\n- Mention the relevant reported safety concerns if available.\n- Compare the recommended route's safety score with the other route(s).\n- Mention travel time only as secondary context.\n- If the safer route takes longer, explicitly explain that the extra travel time was accepted because safety is prioritized.\n- Keep the explanation to 3–5 sentences.\n- Do not use technical jargon.\n- Do not mention this prompt or these instructions.\n\nThe safest route selected by the system is:\n${JSON.stringify(safest)}\n\nOther route alternatives:\n${JSON.stringify(otherRoutes)}\n\nAll route data:\n${JSON.stringify(routes)}\n\nReturn ONLY valid JSON in exactly this format:\n\n{\n  \"recommended_route\": \"${safest?.label || \"\"}\",\n  \"explanation\": \"3–5 sentence explanation\"\n}\n`;\n\nconst requestBody = {\n  contents: [\n    {\n      role: \"user\",\n      parts: [\n        {\n          text: promptText\n        }\n      ]\n    }\n  ],\n  generationConfig: {\n    temperature: 0.3,\n    responseMimeType: \"application/json\"\n  }\n};\n\nreturn {\n  json: {\n    routes,\n    geminiRequestBody: JSON.stringify(requestBody)\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        0
+      ],
+      "id": "797e30d8-d6e7-4e8d-9dbe-9a2584e71e8f",
+      "name": "Build AI Prompt"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nconst knownAreas = [\n  { keywords: [\"orangi\"], lat: 24.9556, lng: 66.9878 },\n  { keywords: [\"nazimabad\", \"board office\", \"lasbela\", \"numaish\", \"tariq road\", \"sadar\", \"saddar\"], lat: 24.9019, lng: 67.0378 },\n  { keywords: [\"gulshan\", \"nagan\", \"north nazimabad\", \"hamdard\", \"millennium mall\", \"national stadium\"], lat: 24.9297, lng: 67.0862 },\n  { keywords: [\"hub dam\", \"hub\"], lat: 25.2450, lng: 67.0500 },\n  { keywords: [\"malir\", \"maymar\", \"maymaar\"], lat: 24.8969, lng: 67.2073 },\n  { keywords: [\"lalzar\"], lat: 24.8800, lng: 67.1500 },\n  { keywords: [\"north karachi\"], lat: 24.9700, lng: 67.0500 },\n  { keywords: [\"saima villas\"], lat: 24.9350, lng: 67.1150 },\n  { keywords: [\"shahre faisal\", \"defence\", \"phase 6\", \"dha\"], lat: 24.8138, lng: 67.0611 },\n  { keywords: [\"site\", \"super highway\"], lat: 24.9100, lng: 67.0700 },\n  { keywords: [\"university road\"], lat: 24.9370, lng: 67.1130 },\n  { keywords: [\"up more\"], lat: 24.9420, lng: 67.1180 },\n  { keywords: [\"clifton\"], lat: 24.8138, lng: 67.0300 },\n  { keywords: [\"highway\"], lat: 24.9200, lng: 67.0700 },\n  { keywords: [\"karachi\"], lat: 24.8607, lng: 67.0011 }\n];\n\nfunction getCoords(text) {\n  const lower = (text || \"\").toLowerCase();\n  for (const area of knownAreas) {\n    if (area.keywords.some(k => lower.includes(k))) {\n      return { lat: area.lat, lng: area.lng };\n    }\n  }\n  return {\n    lat: 24.8607 + (Math.random() - 0.5) * 0.08,\n    lng: 67.0011 + (Math.random() - 0.5) * 0.08\n  };\n}\n\n// Naya: agar map-click se real coordinates pehle se aaye hain, unhe directly use karo\n// Purana: agar text aaya hai, keyword lookup karo (backward compatible)\nconst origin = (typeof body.origin_lat === \"number\" && typeof body.origin_lng === \"number\")\n  ? { lat: body.origin_lat, lng: body.origin_lng }\n  : getCoords(body.origin);\n\nconst destination = (typeof body.destination_lat === \"number\" && typeof body.destination_lng === \"number\")\n  ? { lat: body.destination_lat, lng: body.destination_lng }\n  : getCoords(body.destination);\n\nreturn {\n  json: {\n    origin_lat: origin.lat,\n    origin_lng: origin.lng,\n    destination_lat: destination.lat,\n    destination_lng: destination.lng\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "f1425dce-9922-4ee9-af58-8190a648c52a",
+      "name": "Geocode Locations"
+    },
+    {
+      "parameters": {
+        "jsCode": "const routes = $input.first().json.routes || [];\n\nif (!routes.length) {\n  return [{\n    json: {\n      routes: [],\n      recommended_route: null,\n      explanation: \"No routes were available to compare.\"\n    }\n  }];\n}\n\n// SAFETY FIRST\n// Higher safety score ALWAYS wins.\n// Travel time is only used when safety scores are exactly equal.\n\nconst safest = [...routes].sort((a, b) => {\n  const scoreDiff = (b.safety_score ?? 0) - (a.safety_score ?? 0);\n\n  if (scoreDiff !== 0) {\n    return scoreDiff;\n  }\n\n  return (a.duration_min ?? Infinity) - (b.duration_min ?? Infinity);\n})[0];\n\n// Get the other routes for comparison\nconst otherRoutes = routes.filter(route => route.label !== safest.label);\n\nconst other = otherRoutes[0];\n\nconst score = safest.safety_score ?? 0;\nconst reports = safest.based_on_reports ?? 0;\nconst riskLevel = safest.risk_level ?? \"unknown\";\nconst time = safest.duration_min ?? 0;\n\n// Collect reported issues from matched reports\nconst issues = [];\n\n(safest.matched_reports || []).forEach(report => {\n  if (Array.isArray(report.issues)) {\n    report.issues.forEach(issue => {\n      if (issue && !issues.includes(issue)) {\n        issues.push(issue);\n      }\n    });\n  }\n});\n\n// If matched reports don't contain issues, use risk level as context\nlet issueText = \"\";\n\nif (issues.length > 0) {\n  issueText = ` Nearby safety reports include concerns such as ${issues.slice(0, 4).join(\", \")}.`;\n} else if (riskLevel === \"high\") {\n  issueText = \" Nearby reports indicate higher-risk conditions along this route.\";\n} else if (riskLevel === \"medium\") {\n  issueText = \" Some safety concerns have been reported near this route.\";\n} else {\n  issueText = \" No major safety issues were identified in the available nearby reports.\";\n}\n\n// Build comparison sentence\nlet comparisonText = \"\";\n\nif (other) {\n  const otherScore = other.safety_score ?? 0;\n  const difference = Math.abs(score - otherScore);\n\n  if (score > otherScore) {\n    comparisonText =\n      ` It has a ${difference}-point safety advantage over ${other.label}, which makes it the safer option based on the available data.`;\n  } else if (score === otherScore) {\n    comparisonText =\n      ` Its safety score is equal to ${other.label}, so the shorter route was selected as the tie-breaker.`;\n  }\n}\n\n// Travel time context\nlet timeText = \"\";\n\nif (other) {\n  const otherTime = other.duration_min ?? 0;\n\n  if (time < otherTime) {\n    timeText =\n      ` It also has a shorter estimated travel time of ${time} minutes.`;\n  } else if (time > otherTime) {\n    timeText =\n      ` Although it takes approximately ${time} minutes, travel time was not prioritized over safety.`;\n  } else {\n    timeText =\n      ` Both routes have a similar estimated travel time, so the safety score is the deciding factor.`;\n  }\n}\n\nconst explanation =\n  `${safest.label} is recommended because it has the highest safety score of ${score}/100. ` +\n  `The score is based on ${reports} nearby safety report${reports === 1 ? \"\" : \"s\"} and the current risk level is ${riskLevel}.${issueText}` +\n  `${comparisonText}${timeText} ` +\n  `Safety is prioritized over travel time when selecting the recommended route.`;\n\nreturn [{\n  json: {\n    routes,\n    recommended_route: safest.label,\n    explanation\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        0
+      ],
+      "id": "8b922155-4f05-414c-aa4b-e6b8873b7fc3",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.geminiRequestBody }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1568,
+        176
+      ],
+      "id": "044cbfcd-97e3-4896-89df-43a383f5478f",
+      "name": "Generate AI Recommendation",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ooEo6r7GWZFJlhVw",
+          "name": "gemini"
+        }
+      },
+      "onError": "continueErrorOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive Route Request": {
+      "main": [
+        [
+          {
+            "node": "Geocode Locations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Routing API": {
+      "main": [
+        [
+          {
+            "node": "Parse Routes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Routes": {
+      "main": [
+        [
+          {
+            "node": "Get City Safety Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get City Safety Stats": {
+      "main": [
+        [
+          {
+            "node": "Merge Score With Routes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Response": {
+      "main": [
+        []
+      ]
+    },
+    "Merge Score With Routes": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Recommendation": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Geocode Locations": {
+      "main": [
+        [
+          {
+            "node": "Call Routing API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Recommendation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Recommendation": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Recommendation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse AI Recommendation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "6e8f7f79-44d9-47e5-95d4-18d6bccd0b10",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d56ba2596d0a4d2cdb546453b0edae1cb74ddc69d57b57435cc531ad5fbdc174"
+  },
+  "nodeGroups": [],
+  "id": "wGyNlrsm0tShP7ON",
+  "tags": []
+}

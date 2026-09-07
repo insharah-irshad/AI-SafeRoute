@@ -3,7 +3,7 @@
 // if Person A changes a field name or a route, this is the only
 // place that needs to change.
 
-const BASE_URL = import.meta.env.VITE_N8N_BASE_URL;
+const BASE_URL = "https://reappoint-affection-gathering.ngrok-free.dev/webhook";    // in app submit ngrok
 
 if (!BASE_URL) {
   // Fails loudly in dev instead of silently sending requests to "undefined/report"
@@ -14,7 +14,10 @@ if (!BASE_URL) {
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true'
+    },
     ...options,
   });
 
@@ -70,9 +73,18 @@ export function getMapData() {
  * Returns { routes: [...], recommended_route, explanation }
  * routes.length is 2 or 3 — never assume exactly 2.
  */
-export function compareRoutes({ origin, destination }) {
+/**
+ * Workflow 3 — Compare Routes
+ * POST /compare
+ * Accepts EITHER coordinates (from map clicks) OR text (legacy/fallback).
+ */
+export function compareRoutes({ originLat, originLng, destinationLat, destinationLng, origin, destination }) {
+  const body = (typeof originLat === 'number' && typeof originLng === 'number')
+    ? { origin_lat: originLat, origin_lng: originLng, destination_lat: destinationLat, destination_lng: destinationLng }
+    : { origin, destination };
+
   return request('/compare', {
     method: 'POST',
-    body: JSON.stringify({ origin, destination }),
+    body: JSON.stringify(body),
   });
 }

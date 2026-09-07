@@ -11,13 +11,10 @@ export default function Navbar() {
       <span className="font-semibold tracking-tight">AI SafeRoute</span>
       <nav className="flex gap-1">
         <NavLink to="/" end className={linkClass}>
-          Report
-        </NavLink>
-        <NavLink to="/map" className={linkClass}>
           Map
         </NavLink>
-        <NavLink to="/compare" className={linkClass}>
-          Compare Routes
+        <NavLink to="/report" className={linkClass}>
+          Report
         </NavLink>
       </nav>
     </header>

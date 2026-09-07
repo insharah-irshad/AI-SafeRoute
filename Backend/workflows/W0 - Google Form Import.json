@@ -1,0 +1,415 @@
+{
+  "name": "W0 - Google Form Import",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "1Jj3yA5AEzcMWMWWVqhGjpkO0ZKgSaxf6dtNDKUGWb-4",
+          "mode": "list",
+          "cachedResultName": "Women's Travel Safety Data Collection Survey  (Responses)",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Jj3yA5AEzcMWMWWVqhGjpkO0ZKgSaxf6dtNDKUGWb-4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 305709701,
+          "mode": "list",
+          "cachedResultName": "Form Responses 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Jj3yA5AEzcMWMWWVqhGjpkO0ZKgSaxf6dtNDKUGWb-4/edit#gid=305709701"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "f5e3b2db-de46-47eb-9f69-4f17a87f488e",
+      "name": "Google Sheets Trigger",
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "ezomgUTbYFomkK5C",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Helper: find a field by partial (case-insensitive, trim-safe) match\nfunction findField(item, partial) {\n  const keys = Object.keys(item);\n  const match = keys.find(k => k.trim().toLowerCase().includes(partial.toLowerCase()));\n  return match ? (item[match] || \"\").toString().trim() : \"\";\n}\n\nconst item = $input.item.json;\n\nconst locationText = findField(item, \"areas/routes\");\nconst travelTimeUnsafe = findField(item, \"during which time\");\nconst safetyRatingRaw = findField(item, \"how safe do you feel\");\nconst safetyRating = parseInt(safetyRatingRaw) || null;\n\n// Combine all free-text safety context into one description\nconst descriptionParts = [\n  findField(item, \"makes this route unsafe\"),\n  findField(item, \"specific point/location\"),\n  findField(item, \"improvement would make\"),\n  findField(item, \"biggest challenge\"),\n  findField(item, \"changed your route\"),\n  findField(item, \"additional details\"),\n  findField(item, \"additional experience\")\n].filter(part => part && part !== \".\" && part.length > 1);\n\nconst description = descriptionParts.join(\". \");\n\n// Best-effort city guess from location text (before first comma)\nconst city = locationText.split(\",\")[0]?.trim() || \"\";\n\nreturn {\n  json: {\n    source: \"google_form\",\n    city: city,\n    location_text: locationText,\n    latitude: null,\n    longitude: null,\n    travel_time: travelTimeUnsafe,\n    transport_method: findField(item, \"transport\"),\n    safety_rating: safetyRating,\n    description: description\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "8e308f89-b758-4198-a80c-d387a174d3d6",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        {\n          \"text\": \"You are a safety-report analyzer for a women's route-safety platform in Pakistan. Read the user's free-text description of a location and extract structured safety data.\\n\\nRules:\\n- Only extract issues explicitly stated or clearly implied in the text. Do not invent details.\\n- issues must be chosen from this fixed list only: [\\\"poor lighting\\\", \\\"low activity\\\", \\\"isolated area\\\", \\\"no transport access\\\", \\\"harassment reported\\\", \\\"unsafe crossing\\\", \\\"construction/obstruction\\\", \\\"other\\\"]\\n- risk_level must be one of: \\\"low\\\", \\\"medium\\\", \\\"high\\\"\\n- time_context must be one of: \\\"day\\\", \\\"evening\\\", \\\"night\\\", \\\"unspecified\\\"\\n- Respond with ONLY valid JSON. No preamble, no explanation, no markdown code fences.\\n\\nOutput schema:\\n{\\\"issues\\\": string[], \\\"risk_level\\\": \\\"low\\\"|\\\"medium\\\"|\\\"high\\\", \\\"time_context\\\": \\\"day\\\"|\\\"evening\\\"|\\\"night\\\"|\\\"unspecified\\\", \\\"summary\\\": string}\\n\\nLocation: {{ $json.location_text }}\\nReported time of travel: {{ $json.travel_time }}\\nUser safety rating (1-5, lower = less safe): {{ $json.safety_rating }}\\nDescription: \\\"{{ $json.description }}\\\"\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"temperature\": 0.2,\n    \"responseMimeType\": \"application/json\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "c45da2a5-23b4-477c-8a03-736095929def",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ooEo6r7GWZFJlhVw",
+          "name": "gemini"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const response = $input.item.json;\nconst rawText = response.candidates?.[0]?.content?.parts?.[0]?.text || \"{}\";\n\nlet parsed;\ntry {\n  parsed = JSON.parse(rawText);\n} catch (e) {\n  parsed = {\n    issues: [\"other\"],\n    risk_level: \"medium\",\n    time_context: \"unspecified\",\n    summary: \"Could not parse AI response\"\n  };\n}\n\nconst original = $('Code in JavaScript').item.json;\n\n// Format issues as a Postgres array literal string, e.g. {\"poor lighting\",\"low activity\"}\nconst issuesArray = parsed.issues || [\"other\"];\nconst issuesPgLiteral = \"{\" + issuesArray.map(i => `\"${i.replace(/\"/g, '\\\\\"')}\"`).join(\",\") + \"}\";\n\nreturn {\n  json: {\n    ...original,\n    issues: issuesArray,\n    issues_pg: issuesPgLiteral,   // <-- new field, use THIS one in Postgres node\n    risk_level: parsed.risk_level || \"medium\",\n    time_context: parsed.time_context || \"unspecified\",\n    summary: parsed.summary || \"\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "53633d23-2779-450f-ad2e-2b3318873d1c",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "reports",
+          "mode": "list",
+          "cachedResultName": "reports"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "latitude": "={{ $json.latitude }}",
+            "longitude": "={{ $json.longitude }}",
+            "safety_rating": "={{ $json.safety_rating }}",
+            "source": "={{ $json.source }}",
+            "city": "={{ $json.city }}",
+            "location_text": "={{ $json.location_text }}",
+            "travel_time": "={{ $json.travel_time }}",
+            "transport_method": "={{ $json.transport_method }}",
+            "description": "={{ $json.description }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location_text",
+              "displayName": "location_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "latitude",
+              "displayName": "latitude",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "longitude",
+              "displayName": "longitude",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "travel_time",
+              "displayName": "travel_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "transport_method",
+              "displayName": "transport_method",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "safety_rating",
+              "displayName": "safety_rating",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        816,
+        -96
+      ],
+      "id": "0d47cd94-95c9-45e9-a1bf-d3940ad4311d",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "jrQH96ASGDvPMa1p",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "report_analysis",
+          "mode": "list",
+          "cachedResultName": "report_analysis"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "report_id": "={{ $json.id }}",
+            "issues": "={{ $('Code in JavaScript1').item.json.issues }}",
+            "risk_level": "={{ $('Code in JavaScript1').item.json.risk_level }}",
+            "time_context": "={{ $('Code in JavaScript1').item.json.time_context }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "report_id",
+              "displayName": "report_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "issues",
+              "displayName": "issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_level",
+              "displayName": "risk_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "time_context",
+              "displayName": "time_context",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1024,
+        -96
+      ],
+      "id": "46905313-b471-47a2-a50f-00b0c57e55b5",
+      "name": "Insert rows in a table1",
+      "credentials": {
+        "postgres": {
+          "id": "jrQH96ASGDvPMa1p",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "9c3da9b9-6d37-49e5-b692-0414290f9abe",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d56ba2596d0a4d2cdb546453b0edae1cb74ddc69d57b57435cc531ad5fbdc174"
+  },
+  "nodeGroups": [],
+  "id": "ECscniVPtltSRz3P",
+  "tags": []
+}
