@@ -1,0 +1,121 @@
+{
+  "name": "W2 - Get Map Data",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "reports",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "54cecf34-1c15-4809-b042-77c06d5824c0",
+      "name": "Receive Map Data Request",
+      "webhookId": "d828f054-59bb-4de6-9748-be3d619c65b0"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  r.location_text,\n  COUNT(*) as report_count,\n  AVG(r.safety_rating) as avg_rating,\n  MODE() WITHIN GROUP (ORDER BY ra.risk_level) as most_common_risk\nFROM reports r\nLEFT JOIN report_analysis ra ON ra.report_id = r.id\nGROUP BY r.location_text;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        144,
+        0
+      ],
+      "id": "daf0b364-6429-4ae2-83fd-cf198c5efde5",
+      "name": "Query Location Stats\"",
+      "credentials": {
+        "postgres": {
+          "id": "jrQH96ASGDvPMa1p",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const knownAreas = [\n  { keywords: [\"orangi\"], lat: 24.9556, lng: 66.9878 },\n  { keywords: [\"nazimabad\", \"board office\", \"lasbela\", \"numaish\", \"tariq road\", \"sadar\", \"saddar\"], lat: 24.9019, lng: 67.0378 },\n  { keywords: [\"gulshan\", \"nagan\", \"north nazimabad\", \"hamdard\", \"millennium mall\", \"national stadium\"], lat: 24.9297, lng: 67.0862 },\n  { keywords: [\"hub dam\", \"hub\"], lat: 25.2450, lng: 67.0500 },\n  { keywords: [\"malir\", \"maymar\", \"maymaar\"], lat: 24.8969, lng: 67.2073 },\n  { keywords: [\"lalzar\"], lat: 24.8800, lng: 67.1500 },\n  { keywords: [\"north karachi\"], lat: 24.9700, lng: 67.0500 },\n  { keywords: [\"saima villas\"], lat: 24.9350, lng: 67.1150 },\n  { keywords: [\"shahre faisal\", \"defence\", \"phase 6\", \"dha\"], lat: 24.8138, lng: 67.0611 },\n  { keywords: [\"site\", \"super highway\"], lat: 24.9100, lng: 67.0700 },\n  { keywords: [\"university road\"], lat: 24.9370, lng: 67.1130 },\n  { keywords: [\"up more\"], lat: 24.9420, lng: 67.1180 },\n  { keywords: [\"clifton\"], lat: 24.8138, lng: 67.0300 },\n  { keywords: [\"highway\"], lat: 24.9200, lng: 67.0900 },\n  { keywords: [\"karachi\"], lat: 24.8607, lng: 67.0011 }\n];\n\nfunction getCoords(text) {\n  const lower = (text || \"\").toLowerCase();\n  for (const area of knownAreas) {\n    if (area.keywords.some(k => lower.includes(k))) {\n      return { lat: area.lat, lng: area.lng };\n    }\n  }\n  // Koi match nahi mila — Karachi ke andar random point, taake pin dikhe blank se behtar\n  return {\n    lat: 24.8607 + (Math.random() - 0.5) * 0.08,\n    lng: 67.0011 + (Math.random() - 0.5) * 0.08\n  };\n}\n\nconst items = $input.all();\n\nconst results = items.map(item => {\n  const row = item.json;\n  const reportCount = parseInt(row.report_count) || 0;\n  const avgRating = parseFloat(row.avg_rating) || 3;\n  const riskLevel = row.most_common_risk || \"medium\";\n\n  let score = Math.round((avgRating / 5) * 100);\n  if (riskLevel === \"high\") score = Math.max(0, score - 15);\n  if (riskLevel === \"low\") score = Math.min(100, score + 10);\n\n  const finalRiskLevel = score >= 70 ? \"low\" : score >= 40 ? \"medium\" : \"high\";\n  const insufficientData = reportCount < 2;\n  const coords = getCoords(row.location_text);\n\n  return {\n    json: {\n      location_text: row.location_text,\n      report_count: reportCount,\n      safety_score: score,\n      risk_level: finalRiskLevel,\n      insufficient_data: insufficientData,\n      lat: coords.lat,\n      lng: coords.lng\n    }\n  };\n});\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        0
+      ],
+      "id": "e139a9a2-1b22-4db8-a67c-c3f100da3d23",
+      "name": "Calculate Safety Scores"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        496,
+        0
+      ],
+      "id": "b651c08c-bbfc-4c09-8727-22b2ca891aa1",
+      "name": "Send Map Data"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive Map Data Request": {
+      "main": [
+        [
+          {
+            "node": "Query Location Stats\"",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Location Stats\"": {
+      "main": [
+        [
+          {
+            "node": "Calculate Safety Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Safety Scores": {
+      "main": [
+        [
+          {
+            "node": "Send Map Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "ff96e529-cc8d-4b21-bfd7-176cb707f8e7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d56ba2596d0a4d2cdb546453b0edae1cb74ddc69d57b57435cc531ad5fbdc174"
+  },
+  "nodeGroups": [],
+  "id": "bdfDdwfyVvDYjzAP",
+  "tags": []
+}

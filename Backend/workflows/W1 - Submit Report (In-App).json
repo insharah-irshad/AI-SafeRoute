@@ -1,0 +1,401 @@
+{
+  "name": "W1 - Submit Report (In-App)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "report",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "263ca4ef-9bc6-4baa-ae45-1d3e7c5cc70a",
+      "name": "Receive Report Submission",
+      "webhookId": "455184ac-e6de-40d6-9d2b-51bdb07f7170"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        {\n          \"text\": \"You are a safety-report analyzer for a women's route-safety platform in Pakistan. Read the user's free-text description of a location and extract structured safety data.\\n\\nRules:\\n- Only extract issues explicitly stated or clearly implied in the text. Do not invent details.\\n- issues must be chosen from this fixed list only: [\\\"poor lighting\\\", \\\"low activity\\\", \\\"isolated area\\\", \\\"no transport access\\\", \\\"harassment reported\\\", \\\"unsafe crossing\\\", \\\"construction/obstruction\\\", \\\"other\\\"]\\n- risk_level must be one of: \\\"low\\\", \\\"medium\\\", \\\"high\\\"\\n- time_context must be one of: \\\"day\\\", \\\"evening\\\", \\\"night\\\", \\\"unspecified\\\"\\n- Respond with ONLY valid JSON.\\n\\nLocation: {{ $json.body.location_text }}\\nTravel time: {{ $json.body.travel_time }}\\nSafety rating: {{ $json.body.safety_rating }}\\nDescription: \\\"{{ $json.body.description }}\\\"\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"temperature\": 0.2,\n    \"responseMimeType\": \"application/json\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "535c5c67-a1f0-4da3-b403-9979f385dcc6",
+      "name": "Call AI Analysis",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ooEo6r7GWZFJlhVw",
+          "name": "gemini"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json;\nconst rawText = response.candidates?.[0]?.content?.parts?.[0]?.text || \"{}\";\nlet parsed;\ntry { parsed = JSON.parse(rawText); }\ncatch (e) { parsed = { issues: [\"other\"], risk_level: \"medium\", time_context: \"unspecified\" }; }\n\nconst body = $('Receive Report Submission').item.json.body;\nconst issuesArray = parsed.issues || [\"other\"];\n\nreturn {\n  json: {\n    source: \"app_survey\",\n    city: body.city,\n    location_text: body.location_text,\n    latitude: null,\n    longitude: null,\n    travel_time: body.travel_time,\n    transport_method: body.transport_method,\n    safety_rating: body.safety_rating,\n    description: body.description,\n    issues: issuesArray,\n    risk_level: parsed.risk_level || \"medium\",\n    time_context: parsed.time_context || \"unspecified\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "d4f27dcf-e90c-405f-9e98-6a72857d0ac3",
+      "name": "Parse AI Response"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "report_analysis",
+          "mode": "list",
+          "cachedResultName": "report_analysis"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "issues": "={{ $('Parse AI Response').item.json.issues }}",
+            "risk_level": "={{ $('Parse AI Response').item.json.risk_level }}",
+            "time_context": "={{ $('Parse AI Response').item.json.time_context }}",
+            "report_id": "={{ $json.id }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "report_id",
+              "displayName": "report_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "issues",
+              "displayName": "issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "risk_level",
+              "displayName": "risk_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "time_context",
+              "displayName": "time_context",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        832,
+        0
+      ],
+      "id": "017fc87c-46fc-46c1-8a47-4a60d948ce2d",
+      "name": "Insert Analysis",
+      "credentials": {
+        "postgres": {
+          "id": "jrQH96ASGDvPMa1p",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Report submitted successfully\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1008,
+        -48
+      ],
+      "id": "7dd2da84-1917-49f7-914b-5a163b16190f",
+      "name": "Respond"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "reports",
+          "mode": "list",
+          "cachedResultName": "reports"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "latitude": "={{ $json.latitude }}",
+            "safety_rating": "={{ $json.safety_rating }}",
+            "source": "={{ $json.source }}",
+            "city": "={{ $json.city }}",
+            "location_text": "={{ $json.location_text }}",
+            "longitude": "={{ $json.longitude }}",
+            "travel_time": "={{ $json.travel_time }}",
+            "transport_method": "={{ $json.transport_method }}",
+            "description": "={{ $json.description }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "location_text",
+              "displayName": "location_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "latitude",
+              "displayName": "latitude",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "longitude",
+              "displayName": "longitude",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "travel_time",
+              "displayName": "travel_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "transport_method",
+              "displayName": "transport_method",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "safety_rating",
+              "displayName": "safety_rating",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        624,
+        0
+      ],
+      "id": "8c2cbe5b-bc58-4da8-a1f1-4624ecabd0c0",
+      "name": "Insert Report",
+      "credentials": {
+        "postgres": {
+          "id": "jrQH96ASGDvPMa1p",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive Report Submission": {
+      "main": [
+        [
+          {
+            "node": "Call AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Insert Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Analysis": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Report": {
+      "main": [
+        [
+          {
+            "node": "Insert Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "6602906d-2c17-46d0-b9f1-071513f6d093",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d56ba2596d0a4d2cdb546453b0edae1cb74ddc69d57b57435cc531ad5fbdc174"
+  },
+  "nodeGroups": [],
+  "id": "qrx5WqqtVv7vEWR6",
+  "tags": []
+}
