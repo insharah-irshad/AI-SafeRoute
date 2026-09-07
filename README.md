@@ -775,4 +775,4 @@ AI SafeRoute is a hackathon prototype. Safety scores and recommendations are bas
 
 
 ### By
-Insharah Irshad & Aqsa Ifthikhar
+Insharah Irshad & Aqsa Iftikhar
